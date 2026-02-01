@@ -847,18 +847,87 @@ export const YomitanPopup = () => {
 
     useLayoutEffect(() => {
         if (!dictPopup.visible) return;
-        const viewportW = window.visualViewport?.width || window.innerWidth;
-        const viewportH = window.visualViewport?.height || window.innerHeight;
-        const { x, y } = dictPopup;
 
-        let finalTop: string | number = y + 20;
-        let finalLeft: string | number = Math.min(x, viewportW - 360); 
+        const visualViewport = window.visualViewport;
+        const viewport = visualViewport
+            ? {
+                left: visualViewport.offsetLeft,
+                top: visualViewport.offsetTop,
+                right: visualViewport.offsetLeft + visualViewport.width,
+                bottom: visualViewport.offsetTop + visualViewport.height,
+            }
+            : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+
+        const GAP = 10;
+        const DEFAULT_WIDTH = 340;
         const MAX_HEIGHT = 450;
 
-        if (y > viewportH * 0.6) finalTop = Math.max(10, y - MAX_HEIGHT - 10); 
+        const popupEl = popupRef.current;
+        const popupWidth = popupEl?.offsetWidth || DEFAULT_WIDTH;
+        const measuredHeight = popupEl?.offsetHeight || 0;
+        const maxHeight = Math.min(MAX_HEIGHT, Math.max(120, viewport.bottom - viewport.top - GAP * 2));
+        const popupHeight = measuredHeight > 0 ? Math.min(measuredHeight, maxHeight) : maxHeight;
 
-        setPosStyle({ top: finalTop, left: Math.max(10, finalLeft), maxHeight: `${MAX_HEIGHT}px` });
-    }, [dictPopup.visible, dictPopup.x, dictPopup.y]);
+        const selectionRects = (() => {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+                return [];
+            }
+            const range = selection.getRangeAt(0);
+            return Array.from(range.getClientRects())
+                .map((rect) => ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height }))
+                .filter((rect) => rect.width > 0 && rect.height > 0);
+        })();
+
+        const sourceRects = dictPopup.highlight?.rects?.length
+            ? dictPopup.highlight.rects
+            : selectionRects;
+
+        const fallbackRect = { x: dictPopup.x, y: dictPopup.y, width: 1, height: 1 };
+        const rects = sourceRects.length ? sourceRects : [fallbackRect];
+
+        let left = rects[0].x;
+        let top = rects[0].y;
+        let right = rects[0].x + rects[0].width;
+        let bottom = rects[0].y + rects[0].height;
+        for (let i = 1; i < rects.length; i += 1) {
+            const rect = rects[i];
+            left = Math.min(left, rect.x);
+            top = Math.min(top, rect.y);
+            right = Math.max(right, rect.x + rect.width);
+            bottom = Math.max(bottom, rect.y + rect.height);
+        }
+
+        const rightSpace = viewport.right - right - GAP;
+        const leftSpace = left - viewport.left - GAP;
+        const aboveSpace = top - viewport.top - GAP;
+        const belowSpace = viewport.bottom - bottom - GAP;
+
+        const clamp = (value: number, min: number, max: number) => {
+            if (max < min) return min;
+            return Math.min(Math.max(value, min), max);
+        };
+
+        let finalLeft: number;
+        let finalTop: number;
+
+        if (rightSpace >= popupWidth) {
+            finalLeft = right + GAP;
+            finalTop = top;
+        } else if (leftSpace >= popupWidth) {
+            finalLeft = left - GAP - popupWidth;
+            finalTop = top;
+        } else {
+            const placeBelow = belowSpace >= popupHeight || belowSpace >= aboveSpace;
+            finalTop = placeBelow ? bottom + GAP : top - GAP - popupHeight;
+            finalLeft = left;
+        }
+
+        finalLeft = clamp(finalLeft, viewport.left + GAP, viewport.right - popupWidth - GAP);
+        finalTop = clamp(finalTop, viewport.top + GAP, viewport.bottom - popupHeight - GAP);
+
+        setPosStyle({ top: finalTop, left: finalLeft, maxHeight: `${maxHeight}px` });
+    }, [dictPopup.visible, dictPopup.x, dictPopup.y, dictPopup.highlight, dictPopup.results, dictPopup.isLoading, dictPopup.systemLoading]);
 
     useLayoutEffect(() => {
         const el = backdropRef.current;
