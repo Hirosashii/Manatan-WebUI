@@ -637,6 +637,16 @@ export const AnimeVideoPlayer = ({
         `anime-${animeId}-playback-rate`,
         null,
     );
+    const episodeKey = useMemo(() => {
+        if (currentEpisodeIndex !== null && currentEpisodeIndex !== undefined) {
+            return `ep-${currentEpisodeIndex}`;
+        }
+        return 'single';
+    }, [currentEpisodeIndex]);
+    const [savedPlaybackPosition, setSavedPlaybackPosition] = useLocalStorage<number | null>(
+        `anime-${animeId}-${episodeKey}-playback-position`,
+        null,
+    );
     const [braveBufferSeconds, setBraveBufferSeconds] = useLocalStorage<number>(
         'anime-brave-buffer-seconds',
         20,
@@ -690,6 +700,9 @@ export const AnimeVideoPlayer = ({
     }, []);
     const menuInteractionRef = useRef(0);
     const resumePlaybackRef = useRef(false);
+    const resumePositionAppliedRef = useRef(false);
+    const lastSavedPositionRef = useRef<number | null>(null);
+    const lastSavedAtRef = useRef(0);
     const overlayVisibilityRef = useRef(false);
     const dictionaryOpenedByHoverRef = useRef(false);
     const autoPlayWordAudioKeyRef = useRef<string | null>(null);
@@ -1423,6 +1436,47 @@ export const AnimeVideoPlayer = ({
     }, [videoSrc]);
 
     useEffect(() => {
+        resumePositionAppliedRef.current = false;
+        lastSavedPositionRef.current = null;
+        lastSavedAtRef.current = 0;
+    }, [episodeKey, animeId, videoSrc]);
+
+    const persistPlaybackPosition = useCallback((time: number, force = false) => {
+        if (!resumePositionAppliedRef.current) {
+            return;
+        }
+        if (!Number.isFinite(time) || time < 0) {
+            return;
+        }
+        if (time <= 0.5) {
+            if (force) {
+                setSavedPlaybackPosition(null);
+                lastSavedPositionRef.current = null;
+                lastSavedAtRef.current = 0;
+            }
+            return;
+        }
+        const video = videoRef.current;
+        const resolvedDuration = Number.isFinite(duration) && duration > 0
+            ? duration
+            : Number(video?.duration) || 0;
+        if (resolvedDuration > 0 && time >= resolvedDuration - 3) {
+            setSavedPlaybackPosition(null);
+            lastSavedPositionRef.current = null;
+            lastSavedAtRef.current = 0;
+            return;
+        }
+        const now = Date.now();
+        const lastTime = lastSavedPositionRef.current ?? 0;
+        if (!force && Math.abs(time - lastTime) < 5 && now - lastSavedAtRef.current < 4000) {
+            return;
+        }
+        lastSavedPositionRef.current = time;
+        lastSavedAtRef.current = now;
+        setSavedPlaybackPosition(Number(time.toFixed(3)));
+    }, [duration, setSavedPlaybackPosition]);
+
+    useEffect(() => {
         const video = videoRef.current;
         if (!video) return () => {};
 
@@ -1473,6 +1527,81 @@ export const AnimeVideoPlayer = ({
             video.removeEventListener('progress', onProgress);
         };
     }, []);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) {
+            return;
+        }
+        if (resumePositionAppliedRef.current) {
+            return;
+        }
+        const storedPosition = Number(savedPlaybackPosition);
+        if (!Number.isFinite(storedPosition) || storedPosition <= 0.5) {
+            resumePositionAppliedRef.current = true;
+            return;
+        }
+
+        const applyPosition = () => {
+            if (resumePositionAppliedRef.current) {
+                return;
+            }
+            const resolvedDuration = Number.isFinite(video.duration) && video.duration > 0
+                ? video.duration
+                : 0;
+            const maxPosition = resolvedDuration > 0 ? Math.max(0, resolvedDuration - 1) : storedPosition;
+            const targetPosition = Math.min(storedPosition, maxPosition);
+            if (targetPosition <= 0.5) {
+                resumePositionAppliedRef.current = true;
+                return;
+            }
+            if (Math.abs(video.currentTime - targetPosition) > 0.5) {
+                video.currentTime = targetPosition;
+            }
+            resumePositionAppliedRef.current = true;
+        };
+
+        if (video.readyState >= 1) {
+            applyPosition();
+            return;
+        }
+
+        const onReady = () => applyPosition();
+        video.addEventListener('loadedmetadata', onReady, { once: true });
+        video.addEventListener('loadeddata', onReady, { once: true });
+        return () => {
+            video.removeEventListener('loadedmetadata', onReady);
+            video.removeEventListener('loadeddata', onReady);
+        };
+    }, [episodeKey, savedPlaybackPosition, videoSrc]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) {
+            return () => {};
+        }
+
+        const handleTimeUpdate = () => persistPlaybackPosition(video.currentTime);
+        const handlePause = () => persistPlaybackPosition(video.currentTime, true);
+        const handleEnded = () => {
+            setSavedPlaybackPosition(null);
+            lastSavedPositionRef.current = null;
+            lastSavedAtRef.current = 0;
+        };
+        const handlePageHide = () => persistPlaybackPosition(video.currentTime, true);
+
+        video.addEventListener('timeupdate', handleTimeUpdate);
+        video.addEventListener('pause', handlePause);
+        video.addEventListener('ended', handleEnded);
+        window.addEventListener('pagehide', handlePageHide);
+
+        return () => {
+            video.removeEventListener('timeupdate', handleTimeUpdate);
+            video.removeEventListener('pause', handlePause);
+            video.removeEventListener('ended', handleEnded);
+            window.removeEventListener('pagehide', handlePageHide);
+        };
+    }, [persistPlaybackPosition, setSavedPlaybackPosition]);
 
     useEffect(() => {
         subtitleRequestRef.current += 1;
