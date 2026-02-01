@@ -400,7 +400,10 @@ const generateAnkiFurigana = (entry: DictionaryResult): string => {
     }
     return entry.furigana
         .map((segment) => {
-            const kanji = segment[0];
+            if (!Array.isArray(segment)) {
+                return '';
+            }
+            const kanji = segment[0] ?? '';
             const kana = segment[1];
             if (kana && kana !== kanji) {
                 return `${kanji}[${kana}]`;
@@ -4567,28 +4570,27 @@ export const AnimeVideoPlayer = ({
                         </Stack>
                     </Box>
                     <Stack spacing={1} sx={{ pointerEvents: 'none', position: 'relative', zIndex: 4 }}>
-                        <Stack direction="row" justifyContent="space-between" sx={{ pointerEvents: 'auto' }}>
-                            <Typography variant="caption" onClick={(event) => event.stopPropagation()}>
-                                {formatTime(currentTime)}
-                            </Typography>
-                            <Typography variant="caption" onClick={(event) => event.stopPropagation()}>
-                                {formatTime(duration)}
-                            </Typography>
-                        </Stack>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" spacing={2}>
-                            <Box
-                                sx={{ position: 'relative', flexGrow: 1, width: '100%', pointerEvents: 'auto' }}
-                                onClick={(event) => event.stopPropagation()}
-                                onMouseDown={(event) => event.stopPropagation()}
-                            >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'center', sm: 'flex-end' }} spacing={2}>
+                            <Stack spacing={0.5} sx={{ flexGrow: 1, width: '100%', pointerEvents: 'auto' }}>
                                 <Box
                                     sx={{
+                                        position: 'relative',
+                                        width: '100%',
+                                        minHeight: 28,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                >
+                                    <Box
+                                        sx={{
                                         position: 'absolute',
                                         top: '50%',
                                         left: 0,
                                         right: 0,
                                         height: 4,
-                                        transform: 'translateY(-50%)',
+                                        transform: 'translateY(calc(-50% + 12px))',
                                         backgroundColor: 'rgba(255,255,255,0.2)',
                                         borderRadius: 999,
                                     }}
@@ -4602,59 +4604,74 @@ export const AnimeVideoPlayer = ({
                                         }}
                                     />
                                 </Box>
-                                <Slider
-                                    value={duration ? (currentTime / duration) * 100 : 0}
-                                    onChange={handleSeek}
-                                    aria-label="Video position"
-                                    size="small"
-                                />
-                                {shouldShowVolume && (
-                                    <Box
-                                        sx={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            bottom: -30,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 1,
-                                            px: 0.75,
-                                            py: 0.5,
-                                            borderRadius: 999,
-                                            backgroundColor: 'rgba(0, 0, 0, 0.45)',
-                                            backdropFilter: 'blur(6px)',
-                                            width: 28,
-                                            overflow: 'hidden',
-                                            opacity: 0.7,
-                                            transition: 'width 200ms ease, opacity 200ms ease',
-                                            '&:hover, &:focus-within': {
-                                                width: 160,
-                                                opacity: 1,
-                                            },
-                                            '&:hover .volume-slider, &:focus-within .volume-slider': {
-                                                opacity: 1,
-                                            },
-                                        }}
-                                        onClick={(event) => event.stopPropagation()}
-                                        onMouseDown={(event) => event.stopPropagation()}
-                                    >
-                                        <VolumeUpIcon fontSize="small" />
-                                        <Slider
-                                            className="volume-slider"
-                                            value={volumePercent}
-                                            onChange={handleVolumeChange}
-                                            aria-label="Volume"
-                                            size="small"
-                                            min={0}
-                                            max={100}
+                                    <Slider
+                                        value={duration ? (currentTime / duration) * 100 : 0}
+                                        onChange={handleSeek}
+                                        aria-label="Video position"
+                                        size="small"
+                                        sx={{ py: 0, transform: 'translateY(12px)' }}
+                                    />
+                                </Box>
+                                <Box
+                                    sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        minHeight: 28,
+                                        pointerEvents: 'auto',
+                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                >
+                                    {shouldShowVolume && (
+                                        <Box
                                             sx={{
-                                                width: 110,
-                                                opacity: 0,
-                                                transition: 'opacity 150ms ease',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 1,
+                                                px: 0.75,
+                                                py: 0.5,
+                                                borderRadius: 999,
+                                                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                                                backdropFilter: 'blur(6px)',
+                                                width: 28,
+                                                overflow: 'hidden',
+                                                opacity: 0.7,
+                                                transition: 'width 200ms ease, opacity 200ms ease',
+                                                '&:hover, &:focus-within': {
+                                                    width: 160,
+                                                    opacity: 1,
+                                                },
+                                                '&:hover .volume-slider, &:focus-within .volume-slider': {
+                                                    opacity: 1,
+                                                },
                                             }}
-                                        />
-                                    </Box>
-                                )}
-                            </Box>
+                                        >
+                                            <VolumeUpIcon fontSize="small" />
+                                            <Slider
+                                                className="volume-slider"
+                                                value={volumePercent}
+                                                onChange={handleVolumeChange}
+                                                aria-label="Volume"
+                                                size="small"
+                                                min={0}
+                                                max={100}
+                                                sx={{
+                                                    width: 110,
+                                                    opacity: 0,
+                                                    transition: 'opacity 150ms ease',
+                                                }}
+                                            />
+                                        </Box>
+                                    )}
+                                    <Typography
+                                        variant="caption"
+                                        sx={{ whiteSpace: 'nowrap', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                    >
+                                        {formatTime(currentTime)} / {formatTime(duration)}
+                                    </Typography>
+                                </Box>
+                            </Stack>
                             <Stack spacing={0.5} alignItems="center" sx={{ pointerEvents: 'auto' }}>
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
                                     {(() => {
@@ -4694,7 +4711,15 @@ export const AnimeVideoPlayer = ({
                                         );
                                     })()}
                                 </Stack>
-                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'auto 64px auto',
+                                        alignItems: 'center',
+                                        columnGap: 1,
+                                        minHeight: 28,
+                                    }}
+                                >
                                     <IconButton
                                         size="small"
                                         onClick={(event) => {
@@ -4717,7 +4742,15 @@ export const AnimeVideoPlayer = ({
                                             event.stopPropagation();
                                             openSubtitleOffsetDialog();
                                         }}
-                                        sx={{ cursor: 'pointer', minWidth: 64, textAlign: 'center' }}
+                                        sx={{
+                                            cursor: 'pointer',
+                                            minWidth: 64,
+                                            textAlign: 'center',
+                                            lineHeight: 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
                                     >
                                         {safeSubtitleOffsetMs} ms
                                     </Typography>
@@ -4733,7 +4766,7 @@ export const AnimeVideoPlayer = ({
                                     >
                                         <KeyboardArrowRightIcon fontSize="small" />
                                     </IconButton>
-                                </Stack>
+                                </Box>
                             </Stack>
                         </Stack>
                     </Stack>

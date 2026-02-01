@@ -275,7 +275,10 @@ const AnkiButtons: React.FC<{
                 return entry.headword;
             }
             return furiganaData.map(segment => {
-                const kanji = segment[0];
+                if (!Array.isArray(segment)) {
+                    return '';
+                }
+                const kanji = segment[0] ?? '';
                 const kana = segment[1];
                 if (kana && kana !== kanji) {
                     return `${kanji}[${kana}]`;
