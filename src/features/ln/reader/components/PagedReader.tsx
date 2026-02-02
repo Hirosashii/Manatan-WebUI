@@ -21,6 +21,8 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
     showNavigation = false,
     onPositionUpdate,
     onRegisterSave,
+    onUpdateSettings,
+    chapterFilenames = [],
 }) => {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -33,21 +35,21 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
     const [totalPages, setTotalPages] = useState(1);
     const [contentReady, setContentReady] = useState(false);
     const [isTransitioning, setIsTransitioning] = useState(false);
+    const [effectivePageSize, setEffectivePageSize] = useState(0);
 
     // --- 1. UNIFIED CALCULATION SOURCE ---
     const layout = useMemo(() => {
-        // Safe defaults if dimensions aren't ready
         if (dimensions.width === 0 || dimensions.height === 0) return null;
 
-        const gap = 80; // Large safety gap
+        const gap = 80;
         const padding = settings.lnPageMargin || 24;
 
-        // Content Area dimensions
         const contentW = dimensions.width - (padding * 2);
         const contentH = dimensions.height - (padding * 2);
 
         const columnWidth = isVertical ? contentH : contentW;
 
+        // Keep original pageSize calculation
         const pageSize = columnWidth + gap;
 
         return {
@@ -75,6 +77,7 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
         theme,
         navOptions,
         currentProgress,
+        currentPosition,
         reportChapterChange,
         reportPageChange,
         handleContentClick,
@@ -97,15 +100,21 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
         onRegisterSave,
     });
 
-    // Update dimensions
     // --- Resize Observer ---
     useEffect(() => {
         const updateDimensions = () => {
             if (wrapperRef.current) {
                 const rect = wrapperRef.current.getBoundingClientRect();
+
+                // iOS Safari fix: account for dynamic UI bars
+                const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+                const height = isSafari
+                    ? window.innerHeight
+                    : rect.height;
+
                 setDimensions({
                     width: Math.floor(rect.width),
-                    height: Math.floor(rect.height),
+                    height: Math.floor(height),
                 });
             }
         };
@@ -125,33 +134,72 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
     useEffect(() => {
         if (!contentRef.current || !layout) return;
 
-        setContentReady(false);
+        let cancelled = false;
 
-        const content = contentRef.current;
-        const images = content.querySelectorAll('img');
+        const calculatePages = async () => {
+            setContentReady(false);
 
-        const imagePromises = Array.from(images).map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise<void>(resolve => {
-                img.onload = () => resolve();
-                img.onerror = () => resolve();
-                setTimeout(resolve, 50);
+            const content = contentRef.current;
+            if (!content || cancelled) return;
+
+            // Wait for fonts to be ready
+            if (document.fonts) {
+                try {
+                    await document.fonts.ready;
+                } catch (error) {
+                    console.warn('Font loading check failed:', error);
+                }
+            }
+
+            if (cancelled) return;
+
+            const images = content.querySelectorAll('img');
+
+            const imagePromises = Array.from(images).map(img => {
+                if (img.complete) return Promise.resolve();
+                return new Promise<void>(resolve => {
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve();
+                    setTimeout(resolve, 50);
+                });
             });
-        });
 
-        Promise.all(imagePromises).then(() => {
+            await Promise.all(imagePromises);
+
+            if (cancelled) return;
+
             requestAnimationFrame(() => {
+                const currentContent = contentRef.current;
+                if (cancelled || !currentContent) return;
+
                 // Force Reflow
-                void content.offsetHeight;
+                void currentContent.offsetHeight;
 
-                const scrollSize = isVertical ? content.scrollHeight : content.scrollWidth;
-                const viewportSize = isVertical ? layout.height : layout.width;
+                const scrollSize = isVertical ? currentContent.scrollHeight : currentContent.scrollWidth;
+                const computedStyle = window.getComputedStyle(currentContent);
 
+                // Get the ACTUAL column width from browser
+                const actualColumnWidth = parseFloat(computedStyle.columnWidth) || layout.columnWidth;
+                const actualGap = parseFloat(computedStyle.columnGap) || layout.gap;
+                const actualPageSize = actualColumnWidth + actualGap;
+
+                // Store the browser's actual page size for transform calculations
+                setEffectivePageSize(actualPageSize);
+
+                // Smarter page calculation to avoid ghost pages
                 let calculatedPages = 1;
+                const threshold = actualPageSize * 0.1; // Need 10% overhang for new page
 
-                // Use layout.pageSize for uniform calculation
-                if (scrollSize > viewportSize + 2) {
-                    calculatedPages = Math.max(1, Math.ceil(scrollSize / layout.pageSize));
+                if (scrollSize > actualPageSize + threshold) {
+                    const rawPages = scrollSize / actualPageSize;
+                    const lastPageFill = rawPages % 1; // Fraction of last page used
+
+                    // If last page is less than 5% full, it's likely a rounding artifact
+                    if (lastPageFill > 0 && lastPageFill < 0.05) {
+                        calculatedPages = Math.max(1, Math.floor(rawPages));
+                    } else {
+                        calculatedPages = Math.max(1, Math.ceil(rawPages));
+                    }
                 }
 
                 setTotalPages(calculatedPages);
@@ -166,12 +214,29 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
                 }
 
                 requestAnimationFrame(() => {
+                    if (cancelled) return;
                     setIsTransitioning(false);
                     setContentReady(true);
                 });
             });
-        });
+        };
+
+        calculatePages();
+
+        return () => {
+            cancelled = true;
+        };
     }, [currentHtml, layout, isVertical, typographyStyles, settings]);
+
+    useEffect(() => {
+        if (wrapperRef.current) {
+            const rect = wrapperRef.current.getBoundingClientRect();
+            setDimensions({
+                width: Math.floor(rect.width),
+                height: Math.floor(rect.height),
+            });
+        }
+    }, [isVertical]);
 
     // --- Reporting ---
     useEffect(() => {
@@ -235,6 +300,81 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [navOptions, navCallbacks, contentReady, isTransitioning]);
+    useEffect(() => {
+        const container = wrapperRef.current;
+        if (!container) return;
+
+        const handleEpubLink = (event: Event) => {
+            const customEvent = event as CustomEvent<{ href: string }>;
+            const href = customEvent.detail.href;
+
+            const [filename, anchor] = href.split('#');
+
+            let chapterIndex = chapterFilenames.indexOf(filename);
+
+            if (chapterIndex === -1) {
+                chapterIndex = chapterFilenames.findIndex(fn => {
+                    return fn.endsWith(filename) || fn.endsWith('/' + filename);
+                });
+            }
+
+            if (chapterIndex === -1) {
+                const targetBasename = filename.split('/').pop() || filename;
+                chapterIndex = chapterFilenames.findIndex(fn => {
+                    const storedBasename = fn.split('/').pop() || fn;
+                    return storedBasename === targetBasename;
+                });
+            }
+
+            if (chapterIndex !== -1 && chapterIndex < chapters.length) {
+                if (chapterIndex === currentSection && anchor) {
+                    setTimeout(() => {
+                        const element = document.getElementById(anchor);
+                        if (element && contentRef.current && layout) {
+                            const rect = element.getBoundingClientRect();
+                            const contentRect = contentRef.current.getBoundingClientRect();
+
+                            const offset = isVertical
+                                ? rect.top - contentRect.top
+                                : rect.left - contentRect.left;
+
+                            const pageSize = effectivePageSize || layout.pageSize;
+                            const targetPage = Math.floor(Math.abs(offset) / pageSize);
+
+                            goToPage(Math.max(0, Math.min(targetPage, totalPages - 1)));
+                        }
+                    }, 100);
+                } else {
+                    goToSection(chapterIndex, false);
+
+                    if (anchor) {
+                        setTimeout(() => {
+                            const element = document.getElementById(anchor);
+                            if (element && contentRef.current && layout) {
+                                const rect = element.getBoundingClientRect();
+                                const contentRect = contentRef.current.getBoundingClientRect();
+
+                                const offset = isVertical
+                                    ? rect.top - contentRect.top
+                                    : rect.left - contentRect.left;
+
+                                const pageSize = effectivePageSize || layout.pageSize;
+                                const targetPage = Math.floor(Math.abs(offset) / pageSize);
+
+                                goToPage(Math.max(0, Math.min(targetPage, totalPages - 1)));
+                            }
+                        }, 500);
+                    }
+                }
+            }
+        };
+
+        container.addEventListener('epub-link-clicked', handleEpubLink);
+
+        return () => {
+            container.removeEventListener('epub-link-clicked', handleEpubLink);
+        };
+    }, [chapters.length, goToSection, chapterFilenames, currentSection, goToPage, isVertical, layout, effectivePageSize, totalPages]);
 
     useEffect(() => {
         const wrapper = wrapperRef.current;
@@ -267,7 +407,10 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
     }
 
     // --- Render Logic ---
-    const pageOffset = currentPage === -1 ? 0 : Math.round(currentPage * layout.pageSize);
+    // Use browser's actual page size, fallback to JS calculation
+    const pageOffset = currentPage === -1
+        ? 0
+        : Math.round(currentPage * (effectivePageSize || layout.pageSize));
 
     const transform = isVertical
         ? `translateY(-${pageOffset}px)`
@@ -295,7 +438,6 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
                     position: 'absolute',
                     inset: 0,
                     overflow: 'hidden',
-                    // Clip path ensures strict cutting of overflow (no leftover text from prev page)
                     clipPath: 'inset(0px)',
                 }}
                 onClick={handleContentClick}
@@ -370,6 +512,10 @@ export const PagedReader: React.FC<PagedReaderProps> = ({
                     theme={theme}
                     isVertical={isVertical}
                     mode="paged"
+                    currentPosition={currentPosition}
+                    bookStats={stats}
+                    settings={settings}
+                    onUpdateSettings={onUpdateSettings}
                 />
             )}
         </div>

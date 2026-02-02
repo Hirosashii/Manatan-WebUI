@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
     Box,
     CircularProgress,
@@ -33,13 +33,14 @@ const THEMES = {
 export const LNReaderScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
     const { settings, setSettings, openSettings } = useOCR();
 
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [tocOpen, setTocOpen] = useState(false);
     const [progressLoaded, setProgressLoaded] = useState(false);
-
+    const [currentChapter, setCurrentChapter] = useState(0);
 
     useEffect(() => {
         if (!id) return;
@@ -50,6 +51,9 @@ export const LNReaderScreen: React.FC = () => {
         AppStorage.getLnProgress(id).then((progress) => {
             setSavedProgress(progress);
             setProgressLoaded(true);
+            if (progress?.chapterIndex !== undefined) {
+                setCurrentChapter(progress.chapterIndex);
+            }
         });
     }, [id]);
 
@@ -58,17 +62,36 @@ export const LNReaderScreen: React.FC = () => {
     const themeKey = (settings.lnTheme || 'dark') as keyof typeof THEMES;
     const theme = THEMES[themeKey] || THEMES.dark;
 
-    // Handle jumping to a specific chapter from TOC
+    useEffect(() => {
+        if (!content || isLoading) return;
+
+        const hash = location.hash;
+        if (hash) {
+            setTimeout(() => {
+                const targetId = hash.substring(1);
+                const element = document.getElementById(targetId);
+
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 500);
+        }
+    }, [content, isLoading, location.hash]);
+
     const handleChapterClick = (index: number) => {
         setSavedProgress((prev: any) => ({
             ...prev,
             chapterIndex: index,
-            // Reset page/offset when jumping to a new chapter start
             pageNumber: 0,
             chapterCharOffset: 0,
             sentenceText: '',
         }));
+        setCurrentChapter(index);
         setTocOpen(false);
+    };
+
+    const handleChapterChange = (chapterIndex: number) => {
+        setCurrentChapter(chapterIndex);
     };
 
     if (isLoading || !progressLoaded) {
@@ -129,6 +152,7 @@ export const LNReaderScreen: React.FC = () => {
                 bookId={id!}
                 items={content.chapters}
                 stats={content.stats}
+                chapterFilenames={content.chapterFilenames || []}
                 settings={settings}
                 initialIndex={savedProgress?.chapterIndex ?? 0}
                 initialPage={savedProgress?.pageNumber ?? 0}
@@ -143,6 +167,8 @@ export const LNReaderScreen: React.FC = () => {
                         }
                         : undefined
                 }
+                onUpdateSettings={(key, value) => setSettings(prev => ({ ...prev, [key]: value }))}
+                onChapterChange={handleChapterChange}
                 renderHeader={(showUI, toggleUI) => (
                     <Fade in={showUI}>
                         <Box
@@ -160,12 +186,10 @@ export const LNReaderScreen: React.FC = () => {
                                 pointerEvents: showUI ? 'auto' : 'none',
                             }}
                         >
-                            {/* Back Button */}
                             <IconButton onClick={() => navigate(-1)} sx={{ color: theme.fg }}>
                                 <ArrowBackIcon />
                             </IconButton>
 
-                            {/* Title */}
                             <Typography
                                 sx={{
                                     color: theme.fg,
@@ -181,9 +205,7 @@ export const LNReaderScreen: React.FC = () => {
                                 {content.metadata.title}
                             </Typography>
 
-                            {/* Right Side Icons */}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                {/* Manatan Logo / OCR Settings */}
                                 <IconButton onClick={() => openSettings()} sx={{ color: theme.fg }}>
                                     <Box
                                         component="img"
@@ -193,12 +215,10 @@ export const LNReaderScreen: React.FC = () => {
                                     />
                                 </IconButton>
 
-                                {/* Table of Contents Button */}
                                 <IconButton onClick={() => setTocOpen(true)} sx={{ color: theme.fg }}>
                                     <FormatListBulletedIcon />
                                 </IconButton>
 
-                                {/* Reader Settings Button */}
                                 <IconButton onClick={() => setSettingsOpen(true)} sx={{ color: theme.fg }}>
                                     <SettingsIcon />
                                 </IconButton>
@@ -208,7 +228,6 @@ export const LNReaderScreen: React.FC = () => {
                 )}
             />
 
-            {/* Table of Contents Drawer */}
             <Drawer
                 anchor="right"
                 open={tocOpen}
@@ -233,7 +252,7 @@ export const LNReaderScreen: React.FC = () => {
                             <ListItemButton
                                 key={idx}
                                 onClick={() => handleChapterClick(chapter.chapterIndex)}
-                                selected={chapter.chapterIndex === (savedProgress?.chapterIndex ?? 0)}
+                                selected={chapter.chapterIndex === currentChapter}
                                 sx={{
                                     borderBottom: `1px solid ${theme.fg}11`,
                                     '&.Mui-selected': { bgcolor: `${theme.fg}22` },
@@ -251,12 +270,11 @@ export const LNReaderScreen: React.FC = () => {
                             </ListItemButton>
                         ))
                     ) : (
-                        // Fallback if no TOC found in metadata
                         content.chapters.map((_, idx) => (
                             <ListItemButton
                                 key={idx}
                                 onClick={() => handleChapterClick(idx)}
-                                selected={idx === (savedProgress?.chapterIndex ?? 0)}
+                                selected={idx === currentChapter}
                                 sx={{
                                     borderBottom: `1px solid ${theme.fg}11`,
                                     '&.Mui-selected': { bgcolor: `${theme.fg}22` },

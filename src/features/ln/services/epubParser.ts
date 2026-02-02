@@ -316,8 +316,8 @@ export async function parseEpub(
 
         report('content', 40, 'Parsing chapters...');
 
-        // --- Parse Content Files ---
         const chapters: string[] = [];
+        const chapterFilenames: string[] = [];
 
         for (let i = 0; i < spineIds.length; i++) {
             const id = spineIds[i];
@@ -325,6 +325,8 @@ export async function parseEpub(
             if (!entry) continue;
 
             const fullPath = resolvePath(opfPath, entry.href);
+            const filename = fullPath.split('/').pop() || fullPath;
+
             const fileObj = content.file(fullPath);
             if (!fileObj) continue;
 
@@ -342,8 +344,6 @@ export async function parseEpub(
                 doc = parser.parseFromString(rawText, 'text/html');
             }
 
-            // --- Replace image src with placeholder markers ---
-            // We'll restore these at render time using the stored blobs
             const images = doc.querySelectorAll('img, image, svg image');
             images.forEach((img) => {
                 const srcAttr =
@@ -383,6 +383,7 @@ export async function parseEpub(
                 chapters.push(
                     isImageOnly ? `<div class="image-only-chapter">${cleanHTML}</div>` : cleanHTML
                 );
+                chapterFilenames.push(filename);
             }
 
             const progressPercent = 40 + Math.round((i / spineIds.length) * 40);
@@ -417,6 +418,7 @@ export async function parseEpub(
 
         const parsedBook: LNParsedBook = {
             chapters,
+            chapterFilenames,
             imageBlobs,
         };
 

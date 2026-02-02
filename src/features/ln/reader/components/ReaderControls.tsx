@@ -29,7 +29,6 @@ const FONT_PRESETS = [
     { label: 'Serif', value: '"Noto Serif JP", "Noto Serif KR", "Noto Serif SC", "Noto Serif TC", serif' },
     { label: 'Shippori Mincho', value: '"Shippori Mincho", serif' },
     { label: 'Klee One', value: '"Klee One", serif' },
-    { label: 'Klee One SemiBold', value: '"Klee One", serif' },
     { label: 'Sans-Serif', value: '"Noto Sans JP", "Noto Sans KR", "Noto Sans SC", "Noto Sans TC", sans-serif' },
     { label: 'Yu Mincho', value: '"Yu Mincho", "YuMincho", serif' },
     { label: 'Yu Gothic', value: '"Yu Gothic", "YuGothic", sans-serif' },
@@ -490,7 +489,6 @@ export const ReaderControls: React.FC<Props> = ({
                         >
                             <MenuItem value="horizontal">Horizontal (Left-to-Right)</MenuItem>
                             <MenuItem value="vertical-rtl">Vertical (Japanese RTL)</MenuItem>
-                            <MenuItem value="vertical-ltr">Vertical (Left-to-Right)</MenuItem>
                         </Select>
                     </FormControl>
 
@@ -588,7 +586,21 @@ export const ReaderControls: React.FC<Props> = ({
                         }
                         sx={{ mb: 1.5, width: '100%' }}
                     />
-
+                    <Box sx={{ mb: 3 }}>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={settings.lnShowCharProgress ?? false}
+                                    onChange={(e) => onUpdateSettings('lnShowCharProgress', e.target.checked)}
+                                />
+                            }
+                            label="Show Character Progress"
+                            sx={{ color: theme.fg }}
+                        />
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7, color: theme.fg }}>
+                            Display character count and percentage instead of page numbers
+                        </Typography>
+                    </Box>
                     <FormControlLabel
                         control={
                             <Switch
