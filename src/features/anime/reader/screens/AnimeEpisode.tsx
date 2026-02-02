@@ -112,6 +112,11 @@ export const AnimeEpisode = () => {
     const [jimakuFiles, setJimakuFiles] = useState<JimakuFileEntry[]>([]);
     const [jimakuReady, setJimakuReady] = useState(true);
     const lastVideoWarningRef = useRef<string | null>(null);
+    const dialogContainer = typeof document !== 'undefined' ? document.fullscreenElement ?? undefined : undefined;
+    const dialogZIndex =
+        (typeof document !== 'undefined' && document.fullscreenElement) || isMobile
+            ? theme.zIndex.modal + 400
+            : undefined;
 
     useEffect(() => {
         if (!id || !episodeIndex) {
@@ -587,6 +592,9 @@ export const AnimeEpisode = () => {
                 maxWidth="xs"
                 open={isJimakuTitleDialogOpen}
                 onClose={closeJimakuTitleDialog}
+                container={dialogContainer}
+                sx={dialogZIndex ? { zIndex: dialogZIndex } : undefined}
+                PaperProps={dialogZIndex ? { sx: { position: 'relative' } } : undefined}
             >
                 <DialogTitle>Jimaku title</DialogTitle>
                 <DialogContent>
