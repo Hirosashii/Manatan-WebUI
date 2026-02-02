@@ -69,7 +69,7 @@ import {
     resolveWordAudioUrl,
 } from '@/Manatan/utils/wordAudio';
 import { DictionaryResult, WordAudioSource, WordAudioSourceSelection } from '@/Manatan/types.ts';
-import { StructuredContent } from '@/Manatan/components/YomitanPopup.tsx';
+import { StructuredContent } from '@/Manatan/components/DictionaryView.tsx';
 import { makeToast } from '@/base/utils/Toast.ts';
 import { MediaQuery } from '@/base/utils/MediaQuery.tsx';
 import { addNote, findNotes, guiBrowse, updateLastCard } from '@/Manatan/utils/anki.ts';

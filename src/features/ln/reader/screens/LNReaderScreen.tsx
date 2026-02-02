@@ -11,6 +11,7 @@ import {
     ListItemButton,
     ListItemText
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SettingsIcon from '@mui/icons-material/Settings';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
@@ -23,18 +24,12 @@ import { VirtualReader } from '../components/VirtualReader';
 import { ReaderControls } from '../components/ReaderControls';
 import { YomitanPopup } from '@/Manatan/components/YomitanPopup';
 
-const THEMES = {
-    light: { bg: '#FFFFFF', fg: '#1a1a1a' },
-    sepia: { bg: '#F4ECD8', fg: '#5C4B37' },
-    dark: { bg: '#2B2B2B', fg: '#E0E0E0' },
-    black: { bg: '#000000', fg: '#CCCCCC' },
-} as const;
-
 export const LNReaderScreen: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
     const { settings, setSettings, openSettings } = useOCR();
+    const muiTheme = useTheme();
 
     const [savedProgress, setSavedProgress] = useState<any>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -59,8 +54,8 @@ export const LNReaderScreen: React.FC = () => {
 
     const { content, isLoading, error } = useBookContent(id);
 
-    const themeKey = (settings.lnTheme || 'dark') as keyof typeof THEMES;
-    const theme = THEMES[themeKey] || THEMES.dark;
+    const backgroundDefault = muiTheme.palette.background.default;
+    const divider = muiTheme.palette.divider;
 
     useEffect(() => {
         if (!content || isLoading) return;
@@ -103,12 +98,12 @@ export const LNReaderScreen: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: theme.bg,
-                    color: theme.fg,
+                    bgcolor: 'background.default',
+                    color: 'text.primary',
                     gap: 2,
                 }}
             >
-                <CircularProgress sx={{ color: theme.fg }} />
+                <CircularProgress sx={{ color: 'primary.main' }} />
                 <Typography variant="body2" sx={{ opacity: 0.7 }}>
                     Loading book...
                 </Typography>
@@ -125,8 +120,8 @@ export const LNReaderScreen: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: theme.bg,
-                    color: theme.fg,
+                    bgcolor: 'background.default',
+                    color: 'text.primary',
                     gap: 2,
                     px: 3,
                 }}
@@ -178,7 +173,7 @@ export const LNReaderScreen: React.FC = () => {
                                 left: 0,
                                 right: 0,
                                 p: 1.5,
-                                background: `linear-gradient(to bottom, ${theme.bg}ee, ${theme.bg}00)`,
+                                background: `linear-gradient(to bottom, ${alpha(backgroundDefault, 0.93)}, ${alpha(backgroundDefault, 0)})`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
@@ -186,13 +181,14 @@ export const LNReaderScreen: React.FC = () => {
                                 pointerEvents: showUI ? 'auto' : 'none',
                             }}
                         >
-                            <IconButton onClick={() => navigate(-1)} sx={{ color: theme.fg }}>
+                            {/* Back Button */}
+                            <IconButton onClick={() => navigate(-1)} sx={{ color: 'text.primary' }}>
                                 <ArrowBackIcon />
                             </IconButton>
 
                             <Typography
                                 sx={{
-                                    color: theme.fg,
+                                    color: 'text.primary',
                                     fontWeight: 600,
                                     flex: 1,
                                     textAlign: 'center',
@@ -206,7 +202,8 @@ export const LNReaderScreen: React.FC = () => {
                             </Typography>
 
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <IconButton onClick={() => openSettings()} sx={{ color: theme.fg }}>
+                                {/* Manatan Logo / OCR Settings */}
+                                <IconButton onClick={() => openSettings()} sx={{ color: 'text.primary' }}>
                                     <Box
                                         component="img"
                                         src={ManatanLogo}
@@ -215,11 +212,13 @@ export const LNReaderScreen: React.FC = () => {
                                     />
                                 </IconButton>
 
-                                <IconButton onClick={() => setTocOpen(true)} sx={{ color: theme.fg }}>
+                                {/* Table of Contents Button */}
+                                <IconButton onClick={() => setTocOpen(true)} sx={{ color: 'text.primary' }}>
                                     <FormatListBulletedIcon />
                                 </IconButton>
 
-                                <IconButton onClick={() => setSettingsOpen(true)} sx={{ color: theme.fg }}>
+                                {/* Reader Settings Button */}
+                                <IconButton onClick={() => setSettingsOpen(true)} sx={{ color: 'text.primary' }}>
                                     <SettingsIcon />
                                 </IconButton>
                             </Box>
@@ -236,12 +235,12 @@ export const LNReaderScreen: React.FC = () => {
                     sx: {
                         width: '85%',
                         maxWidth: 320,
-                        bgcolor: theme.bg,
-                        color: theme.fg,
+                        bgcolor: 'background.paper',
+                        color: 'text.primary',
                     },
                 }}
             >
-                <Box sx={{ p: 2, borderBottom: `1px solid ${theme.fg}22` }}>
+                <Box sx={{ p: 2, borderBottom: `1px solid ${divider}` }}>
                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
                         Table of Contents
                     </Typography>
@@ -254,16 +253,16 @@ export const LNReaderScreen: React.FC = () => {
                                 onClick={() => handleChapterClick(chapter.chapterIndex)}
                                 selected={chapter.chapterIndex === currentChapter}
                                 sx={{
-                                    borderBottom: `1px solid ${theme.fg}11`,
-                                    '&.Mui-selected': { bgcolor: `${theme.fg}22` },
-                                    '&:hover': { bgcolor: `${theme.fg}11` },
+                                    borderBottom: `1px solid ${divider}`,
+                                    '&.Mui-selected': { bgcolor: 'action.selected' },
+                                    '&:hover': { bgcolor: 'action.hover' },
                                 }}
                             >
                                 <ListItemText
                                     primary={chapter.label}
                                     primaryTypographyProps={{
                                         fontSize: '0.9rem',
-                                        color: theme.fg,
+                                        color: 'text.primary',
                                         noWrap: true,
                                     }}
                                 />
@@ -276,13 +275,13 @@ export const LNReaderScreen: React.FC = () => {
                                 onClick={() => handleChapterClick(idx)}
                                 selected={idx === currentChapter}
                                 sx={{
-                                    borderBottom: `1px solid ${theme.fg}11`,
-                                    '&.Mui-selected': { bgcolor: `${theme.fg}22` },
+                                    borderBottom: `1px solid ${divider}`,
+                                    '&.Mui-selected': { bgcolor: 'action.selected' },
                                 }}
                             >
                                 <ListItemText
                                     primary={`Chapter ${idx + 1}`}
-                                    primaryTypographyProps={{ color: theme.fg }}
+                                    primaryTypographyProps={{ color: 'text.primary' }}
                                 />
                             </ListItemButton>
                         ))
@@ -314,7 +313,6 @@ export const LNReaderScreen: React.FC = () => {
                         }));
                     });
                 }}
-                theme={theme}
             />
 
             <YomitanPopup />
