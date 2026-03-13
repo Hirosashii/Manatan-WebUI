@@ -7,14 +7,7 @@ import { bindTrigger, usePopupState } from 'material-ui-popup-state/hooks';
 import { useOCR } from '@/Manatan/context/OCRContext';
 import { AppStorage } from '@/lib/storage/AppStorage.ts';
 import { COLOR_THEMES, DEFAULT_SETTINGS } from '@/Manatan/types';
-import {
-    apiRequest,
-    getAppVersion,
-    checkForUpdates,
-    triggerAppUpdate,
-    installAppUpdate,
-    getDictionaries,
-} from '@/Manatan/utils/api';
+import { apiRequest, getAppVersion, checkForUpdates, triggerAppUpdate, installAppUpdate, getFrequencyDictionaries, getDictionaries } from '@/Manatan/utils/api';
 import { DictionaryManager } from './DictionaryManager';
 import { getAnkiVersion, getDeckNames, getModelNames, getModelFields } from '@/Manatan/utils/anki';
 import { ResetButton } from '@/base/components/buttons/ResetButton.tsx';
@@ -126,6 +119,10 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dictManagerKey, setDictManagerKey] = useState(0);
     const [dictionaryNames, setDictionaryNames] = useState<string[]>([]);
+    const persistSettings = useCallback((nextSettings: typeof settings) => {
+        AppStorage.local.setItem('mangatan_settings_v3', JSON.stringify(nextSettings));
+        setSettings(nextSettings);
+    }, [setSettings]);
     const animeHotkeys = useMemo(
         () => ({
             ...DEFAULT_ANIME_HOTKEYS,
@@ -140,6 +137,9 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         const fetchDictionaries = async () => {
             const list = await getDictionaries();
             if (!list || cancelled) {
+                if (!cancelled) {
+                    setTimeout(fetchDictionaries, 1000);
+                }
                 return;
             }
             const names = Array.from(new Set(list.map((dict) => dict.name).filter(Boolean)));
@@ -163,14 +163,16 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 if (!changed) {
                     return prev;
                 }
-                return { ...prev, ankiFieldMap: nextMap };
+                const next = { ...prev, ankiFieldMap: nextMap };
+                persistSettings(next);
+                return next;
             });
         };
         fetchDictionaries();
         return () => {
             cancelled = true;
         };
-    }, [dictManagerKey]);
+    }, [dictManagerKey, persistSettings]);
 
     const mappingOptions = useMemo(() => {
         const baseOptions = BASE_MAPPING_OPTIONS.map((option) => ({ value: option, label: option }));
@@ -181,17 +183,22 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
 
         return [...baseOptions, ...glossaryOptions];
     }, [dictionaryNames, localSettings.ankiFieldMap]);
+    const [availableFreqDicts, setAvailableFreqDicts] = useState<string[]>([]);
 
     const updateAnimeHotkey = useCallback((hotkey: AnimeHotkey, keys: string[]) => {
-        setLocalSettings((prev) => ({
-            ...prev,
-            animeHotkeys: {
-                ...DEFAULT_ANIME_HOTKEYS,
-                ...(prev.animeHotkeys ?? {}),
-                [hotkey]: keys,
-            },
-        }));
-    }, [setLocalSettings]);
+        setLocalSettings((prev) => {
+            const next = {
+                ...prev,
+                animeHotkeys: {
+                    ...DEFAULT_ANIME_HOTKEYS,
+                    ...(prev.animeHotkeys ?? {}),
+                    [hotkey]: keys,
+                },
+            };
+            persistSettings(next);
+            return next;
+        });
+    }, [persistSettings]);
 
     // --- ANKI STATE ---
     const [ankiStatus, setAnkiStatus] = useState<'idle' | 'loading' | 'connected' | 'error'>('idle');
@@ -208,6 +215,13 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     const [updateAvailable, setUpdateAvailable] = useState<any>(null);
     const [updateStatus, setUpdateStatus] = useState<string>('idle');
 
+    useEffect(() => {
+        const fetchFreqDicts = async () => {
+            const dicts = await getFrequencyDictionaries();
+            setAvailableFreqDicts(dicts);
+        };
+        fetchFreqDicts();
+    }, []);
     // --- ANKI EFFECT ---
     const fetchAnkiData = async () => {
         if (!localSettings.ankiConnectEnabled) return;
@@ -336,10 +350,14 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
     };
 
     const handleChange = async (key: keyof typeof settings | string, value: any) => {
-        setLocalSettings((prev) => ({ ...prev, [key]: value }));
+        setLocalSettings((prev) => {
+            const next = { ...prev, [key]: value };
+            persistSettings(next);
+            return next;
+        });
 
         if (key === 'enableYomitan' && value === true) {
-            const language = localSettings.yomitanLanguage || 'japanese';
+            const language = (key === 'yomitanLanguage' ? value : localSettings.yomitanLanguage) || 'japanese';
             await installDictionary(language);
         }
     };
@@ -384,18 +402,13 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         return Object.keys(localSettings.ankiFieldMap || {}).find(key => localSettings.ankiFieldMap?.[key] === contentType) || '';
     };
 
-    const save = () => {
-        AppStorage.local.setItem('mangatan_settings_v3', JSON.stringify(localSettings));
-        setSettings(localSettings);
-        onClose();
-        window.location.reload();
-    };
-
     const resetToDefaults = () => {
         showConfirm('Reset?', 'Revert to defaults?', () => {
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            setLocalSettings({ ...DEFAULT_SETTINGS, mobileMode: isMobile });
-            closeDialog(); 
+            const next = { ...DEFAULT_SETTINGS, mobileMode: isMobile };
+            setLocalSettings(next);
+            persistSettings(next);
+            closeDialog();
         });
     };
 
@@ -645,6 +658,20 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                         </div>
                                     </label>
 
+                                <label style={checkboxLabelStyle}>
+                                    <input
+                                        type="checkbox"
+                                        checked={localSettings.showHarmonicMeanFreq}
+                                        onChange={e => handleChange('showHarmonicMeanFreq', e.target.checked)}
+                                        style={checkboxInputStyle}
+                                    />
+                                    <div>
+                                        Show Harmonic Mean Frequency
+                                        <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
+                                            Displays a single harmonic mean value instead of individual frequency dictionaries.
+                                        </div>
+                                    </div>
+                                </label>
 
                                 {isInstalling && (
                                     <div style={{ fontSize: '0.9em', color: '#aaa', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -820,11 +847,15 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                     value={localSettings.ankiModel || ''}
                                                     onChange={e => {
                                                         const newVal = e.target.value;
-                                                        setLocalSettings(prev => ({
-                                                            ...prev, 
-                                                            ankiModel: newVal,
-                                                            ankiFieldMap: {} 
-                                                        }));
+                                                        setLocalSettings(prev => {
+                                                            const next = {
+                                                                ...prev,
+                                                                ankiModel: newVal,
+                                                                ankiFieldMap: {},
+                                                            };
+                                                            persistSettings(next);
+                                                            return next;
+                                                        });
                                                     }}
                                                 >
                                                     <option value="">Select Card Type...</option>
@@ -913,16 +944,53 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                                             <div style={{ gridColumn: '1 / -1', fontSize: '0.85em', color: '#aaa' }}>
                                                                 Field where the sentence audio will be stored.
                                                             </div>
-
                                                         </div>
                                                     )}
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
+
+                                                        {/* FREQUENCY MODE DROPDOWN - ADD THIS */}
+                                                        {localSettings.enableYomitan &&
+                                                            Object.values(localSettings.ankiFieldMap || {}).includes('Frequency') && (
+                                                                <div style={{
+                                                                    marginTop: '20px',
+                                                                    paddingTop: '15px',
+                                                                    borderTop: '1px solid rgba(255,255,255,0.1)'
+                                                                }}>
+                                                                    <h4 style={{ marginTop: 0, marginBottom: '10px', color: '#ddd' }}>
+                                                                        Frequency Export Mode
+                                                                    </h4>
+                                                                    <div className="grid">
+                                                                        <label htmlFor="ankiFreqMode">Frequency Value</label>
+                                                                        <select
+                                                                            id="ankiFreqMode"
+                                                                            value={localSettings.ankiFreqMode || 'lowest'}
+                                                                            onChange={(e) => handleChange('ankiFreqMode', e.target.value)}
+                                                                            style={{
+                                                                                padding: '6px',
+                                                                                borderRadius: '4px',
+                                                                                border: '1px solid #444',
+                                                                                background: '#222',
+                                                                                color: 'white'
+                                                                            }}
+                                                                        >
+                                                                            <option value="lowest">Lowest Frequency</option>
+                                                                            <option value="harmonic">Harmonic Mean</option>
+                                                                            {availableFreqDicts.map(dict => (
+                                                                                <option key={dict} value={dict}>{dict}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <div style={{ gridColumn: '1 / -1', fontSize: '0.85em', color: '#aaa' }}>
+                                                                            Choose which frequency value to export to Anki.
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                         </>
                     )}
 
@@ -1117,20 +1185,20 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                                 </div>
                             </label>
                             <label style={checkboxLabelStyle}>
-                                <input type="checkbox" checked={localSettings.addSpaceOnMerge} onChange={(e) => handleChange('addSpaceOnMerge', e.target.checked)} style={checkboxInputStyle} />
-                                <div>
-                                    Add Space on Merge
-                                    <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
-                                        Inserts a space when merging multiple text boxes.
-                                    </div>
-                                </div>
-                            </label>
-                            <label style={checkboxLabelStyle}>
                                 <input type="checkbox" checked={localSettings.enableDoubleClickEdit} onChange={(e) => handleChange('enableDoubleClickEdit', e.target.checked)} style={checkboxInputStyle} />
                                 <div>
                                     Enable Double-Click Edit
                                     <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
                                         Allows double-click to edit OCR text boxes.
+                                    </div>
+                                </div>
+                            </label>
+                            <label style={checkboxLabelStyle}>
+                                <input type="checkbox" checked={localSettings.enableDoubleTapZoom} onChange={(e) => handleChange('enableDoubleTapZoom', e.target.checked)} style={checkboxInputStyle} />
+                                <div>
+                                    Enable Double-Tap Zoom
+                                    <div style={{ opacity: 0.6, fontSize: '0.85em' }}>
+                                        Allows double-tap to zoom in the manga reader.
                                     </div>
                                 </div>
                             </label>
@@ -1250,8 +1318,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
                 </div>
                 <div className="ocr-modal-footer">
                     <button type="button" className="warning" onClick={resetToDefaults} style={{ marginRight: 'auto', background: '#e67e22', borderColor: '#d35400' }}>Defaults</button>
-                    <button type="button" onClick={onClose}>Cancel</button>
-                    <button type="button" className="primary" onClick={save}>Save & Reload</button>
+                    <button type="button" className="primary" onClick={onClose}>Close</button>
                 </div>
             </div>
         </div>

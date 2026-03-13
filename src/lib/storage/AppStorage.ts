@@ -154,6 +154,7 @@ export interface LNProgress {
 export interface LNParsedBook {
     chapters: string[];              // Pre-parsed HTML for each chapter
     imageBlobs: Record<string, Blob>; // Original blobs for images
+    chapterFilenames: string[];      // Filename for each chapter
 }
 
 export class AppStorage {

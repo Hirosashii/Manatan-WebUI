@@ -69,7 +69,7 @@ import {
     resolveWordAudioUrl,
 } from '@/Manatan/utils/wordAudio';
 import { DictionaryResult, WordAudioSource, WordAudioSourceSelection } from '@/Manatan/types.ts';
-import { StructuredContent } from '@/Manatan/components/YomitanPopup.tsx';
+import { StructuredContent } from '@/Manatan/components/DictionaryView.tsx';
 import { makeToast } from '@/base/utils/Toast.ts';
 import { MediaQuery } from '@/base/utils/MediaQuery.tsx';
 import { addNote, findNotes, guiBrowse, updateLastCard } from '@/Manatan/utils/anki.ts';
@@ -370,16 +370,25 @@ const parseSubtitles = (input: string, url: string): SubtitleCue[] => {
     return parseVttOrSrt(trimmed);
 };
 
+const splitTagString = (tag: string): string[] =>
+    tag
+        .split(/\s+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+const normalizeTagList = (tags: string[]): string[] =>
+    tags.flatMap((tag) => splitTagString(tag));
+
 const buildAnkiTags = (entry: DictionaryResult): string[] => {
     const allTags = new Set(['manatan']);
-    entry.glossary?.forEach((def) => def.tags?.forEach((tag) => allTags.add(tag)));
+    entry.glossary?.forEach((def) => normalizeTagList(def.tags ?? []).forEach((tag) => allTags.add(tag)));
     entry.termTags?.forEach((tag: any) => {
         if (typeof tag === 'string') {
-            allTags.add(tag);
+            splitTagString(tag).forEach((item) => allTags.add(item));
             return;
         }
         if (tag && typeof tag === 'object' && tag.name) {
-            allTags.add(tag.name);
+            splitTagString(tag.name).forEach((item) => allTags.add(item));
         }
     });
     return Array.from(allTags);
@@ -391,7 +400,10 @@ const generateAnkiFurigana = (entry: DictionaryResult): string => {
     }
     return entry.furigana
         .map((segment) => {
-            const kanji = segment[0];
+            if (!Array.isArray(segment)) {
+                return '';
+            }
+            const kanji = segment[0] ?? '';
             const kana = segment[1];
             if (kana && kana !== kanji) {
                 return `${kanji}[${kana}]`;
@@ -452,9 +464,17 @@ const buildDefinitionHtml = (entry: DictionaryResult, dictionaryName?: string): 
         if (node.type === 'structured-content') {
             return generateHTML(node.content);
         }
+        if (node?.data?.content === 'attribution') {
+            return '';
+        }
 
-        const { tag, content, style, href } = node;
+        const { tag, content, style, href, data } = node;
         const customStyle = styleToString(style);
+        const classNames = typeof data?.class === 'string' ? data.class.split(/\s+/) : [];
+        const isTagClass = classNames.includes('tag');
+        const tagClassStyle = isTagClass
+            ? 'display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle; line-height: 1.2;'
+            : '';
 
         if (tag === 'ul') {
             return `<ul style="padding-left: 20px; margin: 2px 0; list-style-type: disc;${customStyle}">${generateHTML(content)}</ul>`;
@@ -478,7 +498,7 @@ const buildDefinitionHtml = (entry: DictionaryResult, dictionaryName?: string): 
             return `<td style="border: 1px solid #777; padding: 2px 8px; text-align: center;${customStyle}">${generateHTML(content)}</td>`;
         }
         if (tag === 'span') {
-            return `<span style="${customStyle}">${generateHTML(content)}</span>`;
+            return `<span style="${tagClassStyle}${customStyle}">${generateHTML(content)}</span>`;
         }
         if (tag === 'div') {
             return `<div style="${customStyle}">${generateHTML(content)}</div>`;
@@ -498,13 +518,12 @@ const buildDefinitionHtml = (entry: DictionaryResult, dictionaryName?: string): 
     }
     return glossaryEntries
         .map((def, idx) => {
-            const tagsHTML = (def.tags ?? [])
-                .map(
-                    (tag) =>
-                        `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${tag}</span>`,
-                )
-                .join('');
+            const tagsHTML = normalizeTagList(def.tags ?? []).map(
+                (tag) =>
+                    `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #666; vertical-align: middle;">${tag}</span>`,
+            );
             const dictHTML = `<span style="display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-right: 6px; color: #fff; background-color: #9b59b6; vertical-align: middle;">${def.dictionaryName}</span>`;
+            const headerHTML = [...tagsHTML, dictHTML].join(' ');
             const contentHTML = def.content
                 .map((content) => {
                     try {
@@ -519,7 +538,7 @@ const buildDefinitionHtml = (entry: DictionaryResult, dictionaryName?: string): 
                 <div style="margin-bottom: 12px; display: flex;">
                     <div style="flex-shrink: 0; width: 24px; font-weight: bold;">${idx + 1}.</div>
                     <div style="flex-grow: 1;">
-                        <div style="margin-bottom: 4px;">${tagsHTML}${dictHTML}</div>
+                        <div style="margin-bottom: 4px;">${headerHTML}</div>
                         <div>${contentHTML}</div>
                     </div>
                 </div>
@@ -621,6 +640,16 @@ export const AnimeVideoPlayer = ({
         `anime-${animeId}-playback-rate`,
         null,
     );
+    const episodeKey = useMemo(() => {
+        if (currentEpisodeIndex !== null && currentEpisodeIndex !== undefined) {
+            return `ep-${currentEpisodeIndex}`;
+        }
+        return 'single';
+    }, [currentEpisodeIndex]);
+    const [savedPlaybackPosition, setSavedPlaybackPosition] = useLocalStorage<number | null>(
+        `anime-${animeId}-${episodeKey}-playback-position`,
+        null,
+    );
     const [braveBufferSeconds, setBraveBufferSeconds] = useLocalStorage<number>(
         'anime-brave-buffer-seconds',
         20,
@@ -662,8 +691,21 @@ export const AnimeVideoPlayer = ({
     const lastPlaybackWarningRef = useRef<number | null>(null);
     const subtitleRequestRef = useRef(0);
     const dictionaryRequestRef = useRef(0);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) {
+            return;
+        }
+        video.playsInline = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+    }, []);
     const menuInteractionRef = useRef(0);
     const resumePlaybackRef = useRef(false);
+    const resumePositionAppliedRef = useRef(false);
+    const lastSavedPositionRef = useRef<number | null>(null);
+    const lastSavedAtRef = useRef(0);
     const overlayVisibilityRef = useRef(false);
     const dictionaryOpenedByHoverRef = useRef(false);
     const autoPlayWordAudioKeyRef = useRef<string | null>(null);
@@ -1397,6 +1439,47 @@ export const AnimeVideoPlayer = ({
     }, [videoSrc]);
 
     useEffect(() => {
+        resumePositionAppliedRef.current = false;
+        lastSavedPositionRef.current = null;
+        lastSavedAtRef.current = 0;
+    }, [episodeKey, animeId, videoSrc]);
+
+    const persistPlaybackPosition = useCallback((time: number, force = false) => {
+        if (!resumePositionAppliedRef.current) {
+            return;
+        }
+        if (!Number.isFinite(time) || time < 0) {
+            return;
+        }
+        if (time <= 0.5) {
+            if (force) {
+                setSavedPlaybackPosition(null);
+                lastSavedPositionRef.current = null;
+                lastSavedAtRef.current = 0;
+            }
+            return;
+        }
+        const video = videoRef.current;
+        const resolvedDuration = Number.isFinite(duration) && duration > 0
+            ? duration
+            : Number(video?.duration) || 0;
+        if (resolvedDuration > 0 && time >= resolvedDuration - 3) {
+            setSavedPlaybackPosition(null);
+            lastSavedPositionRef.current = null;
+            lastSavedAtRef.current = 0;
+            return;
+        }
+        const now = Date.now();
+        const lastTime = lastSavedPositionRef.current ?? 0;
+        if (!force && Math.abs(time - lastTime) < 5 && now - lastSavedAtRef.current < 4000) {
+            return;
+        }
+        lastSavedPositionRef.current = time;
+        lastSavedAtRef.current = now;
+        setSavedPlaybackPosition(Number(time.toFixed(3)));
+    }, [duration, setSavedPlaybackPosition]);
+
+    useEffect(() => {
         const video = videoRef.current;
         if (!video) return () => {};
 
@@ -1447,6 +1530,81 @@ export const AnimeVideoPlayer = ({
             video.removeEventListener('progress', onProgress);
         };
     }, []);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) {
+            return;
+        }
+        if (resumePositionAppliedRef.current) {
+            return;
+        }
+        const storedPosition = Number(savedPlaybackPosition);
+        if (!Number.isFinite(storedPosition) || storedPosition <= 0.5) {
+            resumePositionAppliedRef.current = true;
+            return;
+        }
+
+        const applyPosition = () => {
+            if (resumePositionAppliedRef.current) {
+                return;
+            }
+            const resolvedDuration = Number.isFinite(video.duration) && video.duration > 0
+                ? video.duration
+                : 0;
+            const maxPosition = resolvedDuration > 0 ? Math.max(0, resolvedDuration - 1) : storedPosition;
+            const targetPosition = Math.min(storedPosition, maxPosition);
+            if (targetPosition <= 0.5) {
+                resumePositionAppliedRef.current = true;
+                return;
+            }
+            if (Math.abs(video.currentTime - targetPosition) > 0.5) {
+                video.currentTime = targetPosition;
+            }
+            resumePositionAppliedRef.current = true;
+        };
+
+        if (video.readyState >= 1) {
+            applyPosition();
+            return;
+        }
+
+        const onReady = () => applyPosition();
+        video.addEventListener('loadedmetadata', onReady, { once: true });
+        video.addEventListener('loadeddata', onReady, { once: true });
+        return () => {
+            video.removeEventListener('loadedmetadata', onReady);
+            video.removeEventListener('loadeddata', onReady);
+        };
+    }, [episodeKey, savedPlaybackPosition, videoSrc]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) {
+            return () => {};
+        }
+
+        const handleTimeUpdate = () => persistPlaybackPosition(video.currentTime);
+        const handlePause = () => persistPlaybackPosition(video.currentTime, true);
+        const handleEnded = () => {
+            setSavedPlaybackPosition(null);
+            lastSavedPositionRef.current = null;
+            lastSavedAtRef.current = 0;
+        };
+        const handlePageHide = () => persistPlaybackPosition(video.currentTime, true);
+
+        video.addEventListener('timeupdate', handleTimeUpdate);
+        video.addEventListener('pause', handlePause);
+        video.addEventListener('ended', handleEnded);
+        window.addEventListener('pagehide', handlePageHide);
+
+        return () => {
+            video.removeEventListener('timeupdate', handleTimeUpdate);
+            video.removeEventListener('pause', handlePause);
+            video.removeEventListener('ended', handleEnded);
+            window.removeEventListener('pagehide', handlePageHide);
+        };
+    }, [persistPlaybackPosition, setSavedPlaybackPosition]);
 
     useEffect(() => {
         subtitleRequestRef.current += 1;
@@ -3973,12 +4131,9 @@ export const AnimeVideoPlayer = ({
                                                     {entry.reading}
                                                 </Typography>
                                             )}
-                                            {entry.termTags?.map((tag, tagIndex) => {
-                                                const label = getTermTagLabel(tag);
-                                                if (!label) {
-                                                    return null;
-                                                }
-                                                return (
+                                            {entry.termTags
+                                                ?.flatMap((tag) => splitTagString(getTermTagLabel(tag)))
+                                                .map((label, tagIndex) => (
                                                     <Box
                                                         key={`${entry.headword}-tag-${tagIndex}`}
                                                         sx={{
@@ -3991,8 +4146,7 @@ export const AnimeVideoPlayer = ({
                                                     >
                                                         {label}
                                                     </Box>
-                                                );
-                                            })}
+                                                ))}
                                         </Box>
                                         <Stack direction="row" spacing={1} alignItems="center">
                                             {settings.ankiConnectEnabled && (
@@ -4043,7 +4197,7 @@ export const AnimeVideoPlayer = ({
                                                                             sx={{ color: '#2ecc71' }}
                                                                             aria-label="Open in Anki"
                                                                         >
-                                                                            <MenuBookIcon fontSize="small" />
+                                                                            <MenuBookIcon sx={{ fontSize: 22, transform: 'translateY(-0.5px)' }} />
                                                                         </IconButton>
                                                                     );
                                                                 }
@@ -4056,10 +4210,19 @@ export const AnimeVideoPlayer = ({
                                                                                 handleAnkiAdd(entry);
                                                                             }}
                                                                             title="Add to Anki"
-                                                                            sx={{ color: '#4fb0ff' }}
+                                                                            sx={{ color: '#2ecc71' }}
                                                                             aria-label="Add to Anki"
                                                                         >
-                                                                            <AddCircleOutlineIcon fontSize="small" />
+                                                                            <AddCircleOutlineIcon
+                                                                                sx={{
+                                                                                    fontSize: 22,
+                                                                                    '& path': {
+                                                                                        transform: 'scale(0.9167)',
+                                                                                        transformOrigin: 'center',
+                                                                                        transformBox: 'fill-box',
+                                                                                    },
+                                                                                }}
+                                                                            />
                                                                         </IconButton>
                                                                     );
                                                                 }
@@ -4114,7 +4277,7 @@ export const AnimeVideoPlayer = ({
                                                     color: wordAudioOptions.length ? '#7cc8ff' : '#555',
                                                 }}
                                             >
-                                                <VolumeUpIcon fontSize="small" />
+                                                <VolumeUpIcon sx={{ fontSize: 22 }} />
                                             </IconButton>
                                         </Stack>
                                     </Stack>
@@ -4167,7 +4330,7 @@ export const AnimeVideoPlayer = ({
                                     {entry.glossary?.map((def, defIndex) => (
                                         <Stack key={`${entry.headword}-def-${defIndex}`} sx={{ mb: 1 }}>
                                             <Stack direction="row" spacing={1} sx={{ mb: 0.5 }}>
-                                                {def.tags?.map((tag, tagIndex) => (
+                                                {normalizeTagList(def.tags ?? []).map((tag, tagIndex) => (
                                                     <Box
                                                         key={`${entry.headword}-def-${defIndex}-tag-${tagIndex}`}
                                                         sx={{
@@ -4407,28 +4570,27 @@ export const AnimeVideoPlayer = ({
                         </Stack>
                     </Box>
                     <Stack spacing={1} sx={{ pointerEvents: 'none', position: 'relative', zIndex: 4 }}>
-                        <Stack direction="row" justifyContent="space-between" sx={{ pointerEvents: 'auto' }}>
-                            <Typography variant="caption" onClick={(event) => event.stopPropagation()}>
-                                {formatTime(currentTime)}
-                            </Typography>
-                            <Typography variant="caption" onClick={(event) => event.stopPropagation()}>
-                                {formatTime(duration)}
-                            </Typography>
-                        </Stack>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" spacing={2}>
-                            <Box
-                                sx={{ position: 'relative', flexGrow: 1, width: '100%', pointerEvents: 'auto' }}
-                                onClick={(event) => event.stopPropagation()}
-                                onMouseDown={(event) => event.stopPropagation()}
-                            >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'center', sm: 'flex-end' }} spacing={2}>
+                            <Stack spacing={0.5} sx={{ flexGrow: 1, width: '100%', pointerEvents: 'auto' }}>
                                 <Box
                                     sx={{
+                                        position: 'relative',
+                                        width: '100%',
+                                        minHeight: 28,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                >
+                                    <Box
+                                        sx={{
                                         position: 'absolute',
                                         top: '50%',
                                         left: 0,
                                         right: 0,
                                         height: 4,
-                                        transform: 'translateY(-50%)',
+                                        transform: 'translateY(calc(-50% + 12px))',
                                         backgroundColor: 'rgba(255,255,255,0.2)',
                                         borderRadius: 999,
                                     }}
@@ -4442,59 +4604,74 @@ export const AnimeVideoPlayer = ({
                                         }}
                                     />
                                 </Box>
-                                <Slider
-                                    value={duration ? (currentTime / duration) * 100 : 0}
-                                    onChange={handleSeek}
-                                    aria-label="Video position"
-                                    size="small"
-                                />
-                                {shouldShowVolume && (
-                                    <Box
-                                        sx={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            bottom: -30,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 1,
-                                            px: 0.75,
-                                            py: 0.5,
-                                            borderRadius: 999,
-                                            backgroundColor: 'rgba(0, 0, 0, 0.45)',
-                                            backdropFilter: 'blur(6px)',
-                                            width: 28,
-                                            overflow: 'hidden',
-                                            opacity: 0.7,
-                                            transition: 'width 200ms ease, opacity 200ms ease',
-                                            '&:hover, &:focus-within': {
-                                                width: 160,
-                                                opacity: 1,
-                                            },
-                                            '&:hover .volume-slider, &:focus-within .volume-slider': {
-                                                opacity: 1,
-                                            },
-                                        }}
-                                        onClick={(event) => event.stopPropagation()}
-                                        onMouseDown={(event) => event.stopPropagation()}
-                                    >
-                                        <VolumeUpIcon fontSize="small" />
-                                        <Slider
-                                            className="volume-slider"
-                                            value={volumePercent}
-                                            onChange={handleVolumeChange}
-                                            aria-label="Volume"
-                                            size="small"
-                                            min={0}
-                                            max={100}
+                                    <Slider
+                                        value={duration ? (currentTime / duration) * 100 : 0}
+                                        onChange={handleSeek}
+                                        aria-label="Video position"
+                                        size="small"
+                                        sx={{ py: 0, transform: 'translateY(12px)' }}
+                                    />
+                                </Box>
+                                <Box
+                                    sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        minHeight: 28,
+                                        pointerEvents: 'auto',
+                                    }}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                >
+                                    {shouldShowVolume && (
+                                        <Box
                                             sx={{
-                                                width: 110,
-                                                opacity: 0,
-                                                transition: 'opacity 150ms ease',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 1,
+                                                px: 0.75,
+                                                py: 0.5,
+                                                borderRadius: 999,
+                                                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                                                backdropFilter: 'blur(6px)',
+                                                width: 28,
+                                                overflow: 'hidden',
+                                                opacity: 0.7,
+                                                transition: 'width 200ms ease, opacity 200ms ease',
+                                                '&:hover, &:focus-within': {
+                                                    width: 160,
+                                                    opacity: 1,
+                                                },
+                                                '&:hover .volume-slider, &:focus-within .volume-slider': {
+                                                    opacity: 1,
+                                                },
                                             }}
-                                        />
-                                    </Box>
-                                )}
-                            </Box>
+                                        >
+                                            <VolumeUpIcon fontSize="small" />
+                                            <Slider
+                                                className="volume-slider"
+                                                value={volumePercent}
+                                                onChange={handleVolumeChange}
+                                                aria-label="Volume"
+                                                size="small"
+                                                min={0}
+                                                max={100}
+                                                sx={{
+                                                    width: 110,
+                                                    opacity: 0,
+                                                    transition: 'opacity 150ms ease',
+                                                }}
+                                            />
+                                        </Box>
+                                    )}
+                                    <Typography
+                                        variant="caption"
+                                        sx={{ whiteSpace: 'nowrap', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                    >
+                                        {formatTime(currentTime)} / {formatTime(duration)}
+                                    </Typography>
+                                </Box>
+                            </Stack>
                             <Stack spacing={0.5} alignItems="center" sx={{ pointerEvents: 'auto' }}>
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
                                     {(() => {
@@ -4534,7 +4711,15 @@ export const AnimeVideoPlayer = ({
                                         );
                                     })()}
                                 </Stack>
-                                <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 28 }}>
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'auto 64px auto',
+                                        alignItems: 'center',
+                                        columnGap: 1,
+                                        minHeight: 28,
+                                    }}
+                                >
                                     <IconButton
                                         size="small"
                                         onClick={(event) => {
@@ -4557,7 +4742,15 @@ export const AnimeVideoPlayer = ({
                                             event.stopPropagation();
                                             openSubtitleOffsetDialog();
                                         }}
-                                        sx={{ cursor: 'pointer', minWidth: 64, textAlign: 'center' }}
+                                        sx={{
+                                            cursor: 'pointer',
+                                            minWidth: 64,
+                                            textAlign: 'center',
+                                            lineHeight: 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
                                     >
                                         {safeSubtitleOffsetMs} ms
                                     </Typography>
@@ -4573,7 +4766,7 @@ export const AnimeVideoPlayer = ({
                                     >
                                         <KeyboardArrowRightIcon fontSize="small" />
                                     </IconButton>
-                                </Stack>
+                                </Box>
                             </Stack>
                         </Stack>
                     </Stack>
@@ -4934,4 +5127,3 @@ export const AnimeVideoPlayer = ({
         </Box>
     );
 };
-

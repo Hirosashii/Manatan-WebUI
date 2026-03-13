@@ -90,8 +90,8 @@ export interface Settings {
     mobileMode: boolean;
     soloHoverMode: boolean;
     enableOverlay: boolean;
-    addSpaceOnMerge: boolean;
     enableDoubleClickEdit: boolean;
+    enableDoubleTapZoom: boolean;
     disableStatusIcon: boolean;
     autoPlayWordAudio: boolean;
     enableYomitan: boolean;
@@ -108,6 +108,8 @@ export interface Settings {
     ankiFieldMap?: Record<string, string>;
     ankiCheckDuplicates?: boolean;
     skipAnkiUpdateConfirm: boolean;
+    showHarmonicMeanFreq: boolean;
+    ankiFreqMode: string;
     // Light Novel Settings
     lnFontSize: number;
     lnLineHeight: number;
@@ -122,8 +124,10 @@ export interface Settings {
     lnLetterSpacing: number;
     lnParagraphSpacing: number;
     lnDisableAnimations: boolean;
+    lnLockProgressBar?: boolean;
+    lnShowCharProgress?: boolean;
     // Dropdown setting for grouping behavior
-    resultGroupingMode: 'grouped' | 'flat'; 
+    resultGroupingMode: 'grouped' | 'flat';
 
 }
 
@@ -136,11 +140,11 @@ export type OcrStatus = 'idle' | 'loading' | 'success' | 'error';
 export interface DictionaryResult {
     headword: string;
     reading: string;
-    furigana?: string[][]; 
+    furigana?: string[][];
     glossary: DictionaryDefinition[];
     forms?: { headword: string; reading: string }[];
     source?: number;
-    matchLen?: number; 
+    matchLen?: number;
     termTags?: Array<string | { name?: string; label?: string; tag?: string; value?: string }>;
     frequencies?: any[];
 
@@ -154,7 +158,7 @@ export interface DictionaryDefinition {
 
 export interface DictPopupContext {
     imgSrc?: string;
-    spreadData?: { leftSrc: string; rightSrc: string }; 
+    spreadData?: { leftSrc: string; rightSrc: string };
     sentence: string;
     source?: {
         kind: 'manga' | 'ln';
@@ -182,7 +186,7 @@ export interface DictPopupState {
             chapterIndex?: number;
         };
     };
-    context?: DictPopupContext; 
+    context?: DictPopupContext;
 }
 
 // --- GLOBAL DIALOG STATE ---
@@ -230,13 +234,13 @@ export const DEFAULT_SETTINGS: Settings = {
     mobileMode: false,
     soloHoverMode: true,
     enableOverlay: true,
-    addSpaceOnMerge: false,
     enableDoubleClickEdit: false,
+    enableDoubleTapZoom: false,
     disableStatusIcon: false,
     autoPlayWordAudio: false,
     enableYomitan: ENABLE_YOMITAN_DEFAULT,
     // Default to grouped
-    resultGroupingMode: 'grouped', 
+    resultGroupingMode: 'grouped',
     deleteModifierKey: 'Alt',
     mergeModifierKey: 'Control',
     site: {
@@ -258,6 +262,8 @@ export const DEFAULT_SETTINGS: Settings = {
     ankiFieldMap: {},
     ankiCheckDuplicates: true,
     skipAnkiUpdateConfirm: false,
+    showHarmonicMeanFreq: false,
+    ankiFreqMode: 'lowest',
     // LN Defaults
     lnFontSize: 16,
     lnLineHeight: 1.6,
@@ -272,6 +278,8 @@ export const DEFAULT_SETTINGS: Settings = {
     lnLetterSpacing: 0,
     lnParagraphSpacing: 1.5,
     lnDisableAnimations: true,
+    lnLockProgressBar: false,
+    lnShowCharProgress: false
 };
 
 export const COLOR_THEMES: Record<ColorTheme, { accent: string; background: string }> = {

@@ -194,9 +194,6 @@ export function handleWheelNavigation(
     return true;
 }
 
-/**
- * Handle touch end for swipe navigation
- */
 export function handleTouchEnd(
     event: TouchEvent,
     touchStart: TouchState,
@@ -215,34 +212,23 @@ export function handleTouchEnd(
     if (deltaTime > maxTime) return null;
 
     if (isVertical) {
-        // Horizontal swipe for vertical text
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minDistance) {
-            if (isRTL) {
-                if (deltaX < 0) {
-                    callbacks.goNext();
-                    return 'next';
-                } else {
-                    callbacks.goPrev();
-                    return 'prev';
-                }
-            } else {
-                if (deltaX < 0) {
-                    callbacks.goPrev();
-                    return 'prev';
-                } else {
-                    callbacks.goNext();
-                    return 'next';
-                }
-            }
-        }
-    } else {
-        // Vertical swipe for horizontal text
-        if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minDistance) {
-            if (deltaY < 0) {
+            if (deltaX > 0) {
                 callbacks.goNext();
                 return 'next';
             } else {
                 callbacks.goPrev();
+                return 'prev';
+            }
+        }
+    } else {
+        if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minDistance) {
+
+            if (deltaY > 0) {
+                callbacks.goPrev();
+                return 'next';
+            } else {
+                callbacks.goNext();
                 return 'prev';
             }
         }
